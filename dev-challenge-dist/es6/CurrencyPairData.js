@@ -4,6 +4,7 @@ class CurrencyPairData {
   constructor() {
     this.data = {};
     this.msgDataArr = [];
+    this.sparkData = [];
     this.data.sparks = new Map();
   }
 
@@ -11,6 +12,7 @@ class CurrencyPairData {
     const msgData = JSON.parse(message.body)
     let stockName = msgData.name
     msgData.msgId = `stomp-id-${stockName}`
+    msgData.timeStamp = Date.now()
     const cols = [];
 
     this.msgDataArr.push(msgData)
@@ -26,11 +28,11 @@ class CurrencyPairData {
           })
 
           // Push all keys to the array 
-          if (k !== 'openBid' && k !== 'openAsk' && k !== 'msgId') {
+          if (k !== 'openBid' && k !== 'openAsk' && k !== 'msgId' && k !== 'timeStamp') {
             cols.push(k);
           }
           if (cols.length === 5) {
-            cols.push("Sparkline")
+            cols.push("Sparkline (Last 30 sec data)")
           }
         }
       }
@@ -64,7 +66,7 @@ class CurrencyPairData {
           let tabCell = tr.insertCell(-1);
           tabCell.innerHTML = dataPayload[row][cols[column]];
           if (column == 5) {
-            Sparkline.draw(tabCell, this.loadSparklineArray(dataPayload[row].msgId, dataPayload[row].bestAsk, dataPayload[row].bestBid, sparks));
+            Sparkline.draw(tabCell, this.loadSparklineArray(dataPayload[row].msgId, dataPayload[row].bestAsk, dataPayload[row].bestBid, sparks))
           }
         }
       }
@@ -76,16 +78,32 @@ class CurrencyPairData {
     }
   }
 
-  loadSparklineArray(msgId, bestAsk, bestBid, sparks) {
+  loadSparklineArray( msgId, bestAsk, bestBid, sparks) {
     let calculateMidPrice = (bestAsk + bestBid) / 2;
     let currentImage = sparks.get(msgId);
     if (typeof currentImage === 'undefined') {
       currentImage = [0];
       sparks.set(msgId, currentImage);
     }
-    currentImage.push(calculateMidPrice.toFixed(2));
-    if (currentImage.length >= 10) { currentImage.shift(); }
-    return currentImage;
+    
+    //Pushed data with current timeStamp
+    currentImage.push({'data': calculateMidPrice.toFixed(2), 'timeStamp': Date.now()});
+    if (currentImage.length >= 15) {
+      currentImage.shift();
+    }
+
+    //filtering data which is less than 30 seconds with current timeStamp
+    currentImage = currentImage.filter((d) => {
+      return (Date.now() - d.timeStamp) < 30000
+    });
+    
+    currentImage.forEach((sparkData) => { 
+      this.sparkData.push(sparkData.data)
+      if ( this.sparkData.length >= 15) {
+        this.sparkData.shift(); //Removing old data due to which array length is exceeding
+      }
+    });
+    return this.sparkData;
   }
 
 }
